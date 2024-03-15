@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-
 BUCKET_NAME = os.environ.get("AWS_BUCKET")
 REGION = os.environ.get("AWS_REGION")
 AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -14,6 +13,26 @@ AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
 if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
     raise ValueError("AWS credentials not found in environment variables.")
+
+s3 = boto3.client(
+    "s3",
+    region_name=REGION,
+    aws_access_key_id=AWS_ACCESS_KEY,
+    aws_secret_access_key=AWS_SECRET_KEY,
+)
+
+
+def get_image(file_key):
+    obj = s3.get_object(Bucket=BUCKET_NAME, Key=file_key)
+    img_data = BytesIO(obj["Body"].read())
+
+    i = Image.open(img_data)
+    i = ImageOps.exif_transpose(i)
+    image = i.convert("RGB")
+    image = np.array(image).astype(np.float32) / 255.0
+    image = torch.from_numpy(image)[None,]
+
+    return image
 
 
 class LoadFromS3:
@@ -33,28 +52,8 @@ class LoadFromS3:
     CATEGORY = "Ikhor"
 
     def load_image(self, file_key):
-        s3 = boto3.client(
-            "s3",
-            region_name=REGION,
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-        )
-
-        # Fetch the image from S3
-        obj = s3.get_object(Bucket=BUCKET_NAME, Key=file_key)
-        img_data = BytesIO(obj["Body"].read())
-
-        i = Image.open(img_data)
-        i = ImageOps.exif_transpose(i)
-        image = i.convert("RGB")
-        image = np.array(image).astype(np.float32) / 255.0
-        image = torch.from_numpy(image)[None,]
-        if "A" in i.getbands():
-            mask = np.array(i.getchannel("A")).astype(np.float32) / 255.0
-            mask = 1.0 - torch.from_numpy(mask)
-        else:
-            mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
-        return (image, mask.unsqueeze(0))
+        image = get_image(file_key)
+        return (image,)
 
 
 class LoadBatchFromS3:
@@ -75,13 +74,6 @@ class LoadBatchFromS3:
     CATEGORY = "Ikhor"
 
     def load_all_images(self, folder_path, max_images):
-        s3 = boto3.client(
-            "s3",
-            region_name=REGION,
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-        )
-
         # List all objects in the folder (prefix)
         objects = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=folder_path)
         # Filter only .png files and limit by max_images
@@ -94,21 +86,7 @@ class LoadBatchFromS3:
         images = []
 
         for key in file_keys:
-            obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
-            img_data = BytesIO(obj["Body"].read())
-
-            i = Image.open(img_data)
-            i = ImageOps.exif_transpose(i)
-            image = i.convert("RGB")
-            image = np.array(image).astype(np.float32) / 255.0
-            image = torch.from_numpy(image)[None,]
-
-            if "A" in i.getbands():
-                mask = np.array(i.getchannel("A")).astype(np.float32) / 255.0
-                mask = 1.0 - torch.from_numpy(mask)
-            else:
-                mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
-
+            image = get_image(key)
             images.append(image)
 
         return (torch.cat(images, dim=0), len(images))
