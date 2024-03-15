@@ -1,3 +1,4 @@
+import io
 import os
 from io import BytesIO
 
@@ -56,6 +57,54 @@ class LoadFromS3:
         return (image,)
 
 
+class SaveToS3:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE", {}),
+                "file_name": ("STRING", {"default": "saved_image.jpg"}),
+                "content_type": ("STRING", {"default": "image/jpeg"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    FUNCTION = "save_image"
+    CATEGORY = "Ikhor"
+    OUTPUT_NODE = True
+
+    def save_image(self, image, file_name, content_type="image/jpeg"):
+        img_np = image.cpu().numpy()
+
+        # Remove unnecessary dimensions (assuming the color channel is last)
+        if img_np.ndim == 4:
+            img_np = img_np.squeeze(0)  # Remove batch dimension if present
+
+        if img_np.shape[-1] != 3:
+            raise ValueError("Image must have 3 channels (RGB)")
+
+        img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
+        img = Image.fromarray(img_np)
+
+        # Convert PIL Image to Bytes
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="JPEG" if content_type == "image/jpeg" else "PNG")
+        img_byte_arr = img_byte_arr.getvalue()
+
+        # Save to S3
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=file_name,
+            Body=img_byte_arr,
+            ContentType=content_type,
+        )
+
+        return f"Image saved to S3 as {file_name}"
+
+
 class LoadBatchFromS3:
     def __init__(self):
         pass
@@ -95,10 +144,12 @@ class LoadBatchFromS3:
 # Add this new node to the dictionary of all nodes
 NODE_CLASS_MAPPINGS = {
     "LoadFromS3": LoadFromS3,
+    "SaveToS3": SaveToS3,
     "LoadBatchFromS3": LoadBatchFromS3,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadBatchFromS3": "Load Image Batch from S3",
     "LoadFromS3": "Load Image from S3",
+    "SaveToS3": "Save Image to S3",
+    "LoadBatchFromS3": "Load Image Batch from S3",
 }
