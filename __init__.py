@@ -41,8 +41,9 @@ def save_image_to_s3(image, file_name, content_type="image/jpeg"):
     img_np = image.cpu().numpy()
 
     # Remove unnecessary dimensions (assuming the color channel is last)
+    # First dimension tends to be the batch dimension which we can ignore
     if img_np.ndim == 4:
-        img_np = img_np.squeeze(0)  # Remove batch dimension if present
+        img_np = img_np.squeeze(0)
 
     if img_np.shape[-1] != 3:
         raise ValueError("Image must have 3 channels (RGB)")
@@ -50,12 +51,11 @@ def save_image_to_s3(image, file_name, content_type="image/jpeg"):
     img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
     img = Image.fromarray(img_np)
 
-    # Convert PIL Image to Bytes
+    # Load image into memory to get bytes for s3 upload
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format="JPEG" if content_type == "image/jpeg" else "PNG")
     img_byte_arr = img_byte_arr.getvalue()
 
-    # Save to S3
     s3.put_object(
         Bucket=BUCKET_NAME,
         Key=file_name,
@@ -103,9 +103,7 @@ class LoadBatchFromS3:
     CATEGORY = "Ikhor"
 
     def load_all_images(self, folder_path, max_images):
-        # List all objects in the folder (prefix)
         objects = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=folder_path)
-        # Filter only .png files and limit by max_images
         file_keys = [
             content["Key"]
             for content in objects.get("Contents", [])
@@ -153,11 +151,11 @@ class SaveBatchToS3:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "images": ("IMAGE",),  # Expect a batch of images
+                "images": ("IMAGE",),
                 "file_prefix": (
                     "STRING",
                     {"default": "image_"},
-                ),  # Prefix for file names
+                ),
                 "content_type": ("STRING", {"default": "image/jpeg"}),
             }
         }
@@ -179,7 +177,6 @@ class SaveBatchToS3:
         return "Images saved to S3"
 
 
-# Add this new node to the dictionary of all nodes
 NODE_CLASS_MAPPINGS = {
     "LoadFromS3": LoadFromS3,
     "LoadBatchFromS3": LoadBatchFromS3,
