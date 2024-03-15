@@ -6,8 +6,9 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-BUCKET_NAME = ""
-REGION = ""
+
+BUCKET_NAME = os.environ.get("AWS_BUCKET")
+REGION = os.environ.get("AWS_REGION")
 
 
 class LoadFromS3:
@@ -95,7 +96,7 @@ class LoadBatchFromS3:
         file_keys = [
             content["Key"]
             for content in objects.get("Contents", [])
-            if content["Key"].endswith(".png")
+            if content["Key"].endswith(".png") or content["Key"].endswith(".jpg")
         ][:max_images]
 
         images = []
