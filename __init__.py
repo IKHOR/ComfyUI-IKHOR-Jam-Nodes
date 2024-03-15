@@ -1,4 +1,4 @@
-import os  # Import the os module
+import os
 from io import BytesIO
 
 import boto3
@@ -72,7 +72,7 @@ class LoadBatchFromS3:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT")
+    RETURN_TYPES = ("IMAGE", "INT")
     FUNCTION = "load_all_images"
     CATEGORY = "Ikhor"
 
@@ -99,7 +99,6 @@ class LoadBatchFromS3:
         ][:max_images]
 
         images = []
-        masks = []
 
         for key in file_keys:
             obj = s3.get_object(Bucket=BUCKET_NAME, Key=key)
@@ -118,9 +117,8 @@ class LoadBatchFromS3:
                 mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
 
             images.append(image)
-            masks.append(mask.unsqueeze(0))
 
-        return (torch.cat(images, dim=0), torch.stack(masks, dim=0), len(images))
+        return (torch.cat(images, dim=0), len(images))
 
 
 # Add this new node to the dictionary of all nodes
