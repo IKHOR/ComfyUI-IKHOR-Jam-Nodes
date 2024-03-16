@@ -33,23 +33,22 @@ def get_image_from_s3(file_key):
     image = i.convert("RGB")
     image = np.array(image).astype(np.float32) / 255.0
     image = torch.from_numpy(image)[None,]
-
-    return image
+    mask = torch.zeros((64, 64), dtype=torch.float32, device="cpu")
+    if "A" in i.getbands():
+        mask = np.array(i.getchannel("A")).astype(np.float32) / 255.0
+        mask = 1.0 - torch.from_numpy(mask)
+    return (image, mask.unsqueeze(0))
 
 
 def save_image_to_s3(image, file_name, content_type="image/jpeg"):
-    img_np = image.cpu().numpy()
+    # Convert the PyTorch tensor back to a PIL image
+    i = 255.0 * image.cpu().numpy()
+    img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
 
-    # Remove unnecessary dimensions (assuming the color channel is last)
-    # First dimension tends to be the batch dimension which we can ignore
-    if img_np.ndim == 4:
-        img_np = img_np.squeeze(0)
-
-    if img_np.shape[-1] != 3:
-        raise ValueError("Image must have 3 channels (RGB)")
-
-    img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
-    img = Image.fromarray(img_np)
+    # If the image has an alpha channel, convert it to RGB
+    # this is just a quick fix for now since we're passing jpeg around
+    if img.mode == "RGBA" and content_type == "image/jpeg":
+        img = img.convert("RGB")
 
     # Load image into memory to get bytes for s3 upload
     img_byte_arr = io.BytesIO()
@@ -76,13 +75,13 @@ class LoadFromS3:
             }
         }
 
-    RETURN_TYPES = ("IMAGE",)
+    RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "load_image"
     CATEGORY = "Ikhor"
 
     def load_image(self, file_key):
-        image = get_image_from_s3(file_key)
-        return (image,)
+        image, mask = get_image_from_s3(file_key)
+        return (image, mask)
 
 
 class LoadBatchFromS3:
@@ -119,6 +118,7 @@ class LoadBatchFromS3:
         return (torch.cat(images, dim=0), len(images))
 
 
+# TODO: no need for separate function for saving single image and batch
 class SaveToS3:
     def __init__(self):
         pass
@@ -127,7 +127,7 @@ class SaveToS3:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {}),
+                "images": ("IMAGE", {}),
                 "file_name": ("STRING", {"default": "saved_image.jpg"}),
                 "content_type": ("STRING", {"default": "image/jpeg"}),
             }
@@ -138,8 +138,8 @@ class SaveToS3:
     CATEGORY = "Ikhor"
     OUTPUT_NODE = True
 
-    def save_image(self, image, file_name, content_type="image/jpeg"):
-        save_image_to_s3(image, file_name, content_type)
+    def save_image(self, images, file_name, content_type="image/jpeg"):
+        save_image_to_s3(images[0], file_name, content_type)
         return "Image saved to S3"
 
 
