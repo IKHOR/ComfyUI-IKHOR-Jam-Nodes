@@ -110,12 +110,13 @@ class LoadBatchFromS3:
         ][:max_images]
 
         images = []
-
+        masks = []
         for key in file_keys:
-            image = get_image_from_s3(key)
+            image, mask = get_image_from_s3(key)
             images.append(image)
+            masks.append(mask)
 
-        return (torch.cat(images, dim=0), len(images))
+        return (torch.cat(images, dim=0), torch.cat(masks, dim=0), len(file_keys))
 
 
 # TODO: no need for separate function for saving single image and batch
