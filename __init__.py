@@ -97,7 +97,7 @@ class LoadBatchFromS3:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "INT")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT")
     FUNCTION = "load_all_images"
     CATEGORY = "Ikhor"
 
@@ -169,7 +169,7 @@ class SaveBatchToS3:
     def save_batch(self, images, file_prefix, content_type="image/jpeg"):
         for index, image in enumerate(images):
             file_name = (
-                f"{file_prefix}{index}.jpg"
+                f"{file_prefix}{str(index).zfill(3)}.jpg"
                 if content_type == "image/jpeg"
                 else f"{file_prefix}{index}.png"
             )
